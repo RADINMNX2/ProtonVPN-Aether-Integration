@@ -1,0 +1,99 @@
+name: Engine (Rust)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'aether/**'
+      - 'CORE_VERSION'
+      - 'scripts/**'
+      - '.github/workflows/engine.yml'
+  pull_request:
+    paths:
+      - 'aether/**'
+      - 'CORE_VERSION'
+      - 'scripts/**'
+      - '.github/workflows/engine.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: engine-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  build:
+    name: Aether engine (Windows x86_64)
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve pinned core version
+        id: ver
+        shell: bash
+        run: echo "v=$(cat CORE_VERSION)" >> "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: aether/aether
+          cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Format check
+        continue-on-error: true
+        working-directory: aether/aether
+        run: cargo fmt --all -- --check
+
+      - name: Build engine (aether.exe, static CRT)
+        timeout-minutes: 40
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUSTFLAGS='-C target-feature=+crt-static' \
+            cargo build --release --locked --target x86_64-pc-windows-msvc \
+            --manifest-path aether/aether/Cargo.toml \
+            || cargo build --release --target x86_64-pc-windows-msvc \
+               --manifest-path aether/aether/Cargo.toml
+          ls -la aether/aether/target/x86_64-pc-windows-msvc/release/aether.exe
+
+      - name: Stage engine payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist-engine
+          cp aether/aether/target/x86_64-pc-windows-msvc/release/aether.exe dist-engine/
+          cp CORE_VERSION dist-engine/CORE_VERSION
+          ./scripts/fetch-wintun.ps1 -ArchDir bin/amd64 -WintunVersion 0.14.1
+          ls -la dist-engine
+
+      - name: Upload engine artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: aether-engine-x64
+          path: dist-engine/
+          if-no-files-found: error
+
+  validate:
+    name: Clippy (lint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: aether/aether
+      - name: Clippy
+        continue-on-error: true
+        working-directory: aether/aether
+        run: cargo clippy --all-targets -- -D warnings
