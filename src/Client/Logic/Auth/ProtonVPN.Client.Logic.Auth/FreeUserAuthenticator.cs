@@ -44,7 +44,7 @@ public class FreeUserAuthenticator : IUserAuthenticator
     public bool HasAuthenticatedSessionData() => true;
 
     public Task<SsoAuthResult> StartSsoAuthAsync(string username)
-        => Task.FromResult(SsoAuthResult.Fail("No-account mode: SSO is not available."));
+        => Task.FromResult(SsoAuthResult.FromAuthResult(AuthResult.Fail("No-account mode: SSO is not available.")));
 
     public Task<AuthResult> CompleteSsoAuthAsync(string ssoResponseToken)
         => Task.FromResult(AuthResult.Fail("No-account mode: SSO is not available."));
