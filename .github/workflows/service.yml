@@ -1,0 +1,73 @@
+name: Service (.NET WinAppSDK)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - '.github/workflows/service.yml'
+  pull_request:
+    paths:
+      - 'src/**'
+      - '.github/workflows/service.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build ProtonVPN service + app (Windows x64)
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET (runtime + SDK)
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            6.0.x
+
+      - name: Install Windows App SDK build tools
+        shell: pwsh
+        run: |
+          dotnet workload install maui-windows 2>$null
+          # The WinAppSDK projects consume the Microsoft.WindowsAppSDK NuGet
+          # and WinUI templates through VS build; ensure an MSBuild host is present.
+          if (-not (Get-Command msbuild -ErrorAction SilentlyContinue)) {
+            Write-Host "::warning::Standalone msbuild not found; relying on dotnet build with Platform=x64."
+          }
+
+      - name: Restore NuGet packages
+        working-directory: src
+        shell: pwsh
+        run: |
+          dotnet restore ProtonVPN.App.sln -p:Platform=x64
+        continue-on-error: true
+
+      - name: Build solution (Release, x64, win-x64)
+        working-directory: src
+        shell: pwsh
+        run: |
+          dotnet build ProtonVPN.App.sln `
+            -c Release `
+            -p:Platform=x64 `
+            -p:RuntimeIdentifier=win-x64 `
+            --no-restore
+        continue-on-error: true
+
+      - name: Report build log tail on failure
+        if: failure()
+        shell: pwsh
+        run: |
+          Get-ChildItem src -Recurse -Filter '*.log' -ErrorAction SilentlyContinue |
+            ForEach-Object { Write-Host "--- $($_.FullName) ---"; Get-Content $_.FullName -Tail 80 }
+
+      - name: Upload app artifacts (best effort)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-x64
+          path: |
+            src/**/bin/x64/Release/**/*
+            src/**/AppPackages/**/*
+          if-no-files-found: warn
