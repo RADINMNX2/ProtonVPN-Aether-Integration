@@ -1,4 +1,4 @@
-name: Service (.NET WinAppSDK)
+name: Service (.NET)
 
 on:
   push:
@@ -13,61 +13,44 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
-    name: Build ProtonVPN service + app (Windows x64)
+  build-core:
+    name: Build service-side subset (no-account + Aether C#)
     runs-on: windows-latest
-    timeout-minutes: 90
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup .NET (runtime + SDK)
+      - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: |
-            8.0.x
-            6.0.x
+          dotnet-version: 8.0.x
 
-      - name: Install Windows App SDK build tools
+      - name: Restore + build changed C# projects (failures surface)
         shell: pwsh
+        working-directory: src
         run: |
-          dotnet workload install maui-windows 2>$null
-          # The WinAppSDK projects consume the Microsoft.WindowsAppSDK NuGet
-          # and WinUI templates through VS build; ensure an MSBuild host is present.
-          if (-not (Get-Command msbuild -ErrorAction SilentlyContinue)) {
-            Write-Host "::warning::Standalone msbuild not found; relying on dotnet build with Platform=x64."
+          $projects = @(
+            "Common/ProtonVPN.Common.Core/ProtonVPN.Common.Core.csproj"
+            "Configurations/ProtonVPN.Configurations.Contracts/ProtonVPN.Configurations.Contracts.csproj"
+            "Configurations/ProtonVPN.Configurations/ProtonVPN.Configurations.csproj"
+            "ProtonVPN.Vpn/ProtonVPN.Vpn.csproj"
+            "ProtonVPN.Service/ProtonVPN.Service.csproj"
+            "Client/Logic/Auth/ProtonVPN.Client.Logic.Auth/ProtonVPN.Client.Logic.Auth.csproj"
+            "Client/Logic/Auth/ProtonVPN.Client.Logic.Auth.Installers/ProtonVPN.Client.Logic.Auth.Installers.csproj"
+          )
+          $failed = $false
+          foreach ($p in $projects) {
+            Write-Host "==== building $p ===="
+            dotnet build $p -c Debug
+            if ($LASTEXITCODE -ne 0) { $failed = $true; Write-Host "::error::build failed: $p" }
           }
+          if ($failed) { exit 1 }
 
-      - name: Restore NuGet packages
-        working-directory: src
-        shell: pwsh
-        run: |
-          dotnet restore ProtonVPN.App.sln -p:Platform=x64
-        continue-on-error: true
-
-      - name: Build solution (Release, x64, win-x64)
-        working-directory: src
-        shell: pwsh
-        run: |
-          dotnet build ProtonVPN.App.sln `
-            -c Release `
-            -p:Platform=x64 `
-            -p:RuntimeIdentifier=win-x64 `
-            --no-restore
-        continue-on-error: true
-
-      - name: Report build log tail on failure
-        if: failure()
-        shell: pwsh
-        run: |
-          Get-ChildItem src -Recurse -Filter '*.log' -ErrorAction SilentlyContinue |
-            ForEach-Object { Write-Host "--- $($_.FullName) ---"; Get-Content $_.FullName -Tail 80 }
-
-      - name: Upload app artifacts (best effort)
+      - name: Upload build outputs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: app-x64
+          name: service-bin
           path: |
-            src/**/bin/x64/Release/**/*
-            src/**/AppPackages/**/*
+            src/**/bin/Debug/**/*
           if-no-files-found: warn
