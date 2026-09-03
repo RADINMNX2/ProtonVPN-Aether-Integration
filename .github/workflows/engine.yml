@@ -42,7 +42,7 @@ jobs:
           targets: x86_64-pc-windows-msvc
           components: clippy, rustfmt
 
-      # Key bump (ninja) forces a fresh configure after switching generators:
+      # Key bump forces a fresh configure after switching generators:
       # the previous failure polluted the cache with a Visual-Studio-generated
       # CMakeCache.txt that conflicts with the Ninja generator.
       - uses: Swatinem/rust-cache@v2
@@ -64,24 +64,26 @@ jobs:
       - name: Set up MSVC (Ninja + cl)
         uses: ilammy/msvc-dev-cmd@v1
 
+      # Use PowerShell (not bash) so the MSVC dev-cmd PATH is properly inherited.
+      # Git-bash's /usr/bin/link.exe shadows MSVC's link.exe in bash PATH.
       - name: Build engine (aether.exe, static CRT)
         timeout-minutes: 40
-        shell: bash
+        shell: pwsh
         env:
           CMAKE_GENERATOR: Ninja
           RUSTFLAGS: -C target-feature=+crt-static
         run: |
-          set -euo pipefail
-          # Prepend MSVC linker to PATH so bash finds it before Git's
-          # coreutils link.exe (C:\Program Files\Git\usr\bin\link.exe)
-          export PATH="${VCToolsInstallDir}/bin/Hostx64/x64:${PATH}"
-          command -v link.exe && link.exe /? | head -1
-          command -v ninja && ninja --version
-          cargo build --release --locked --target x86_64-pc-windows-msvc \
-            --manifest-path aether/aether/Cargo.toml \
-            || cargo build --release --target x86_64-pc-windows-msvc \
-               --manifest-path aether/aether/Cargo.toml
-          ls -la aether/aether/target/x86_64-pc-windows-msvc/release/aether.exe
+          $ErrorActionPreference = "Stop"
+          Write-Host "link.exe: $(Get-Command link.exe -ErrorAction SilentlyContinue | Select -Expand Source)"
+          Write-Host "ninja:    $(Get-Command ninja    -ErrorAction SilentlyContinue | Select -Expand Source)"
+          cargo build --release --locked --target x86_64-pc-windows-msvc `
+            --manifest-path aether/aether/Cargo.toml
+          if ($LASTEXITCODE -ne 0) {
+            cargo build --release --target x86_64-pc-windows-msvc `
+              --manifest-path aether/aether/Cargo.toml
+          }
+          if ($LASTEXITCODE -ne 0) { throw "cargo build failed" }
+          Get-ChildItem aether/aether/target/x86_64-pc-windows-msvc/release/aether.exe
 
       - name: Stage engine payload
         shell: bash
