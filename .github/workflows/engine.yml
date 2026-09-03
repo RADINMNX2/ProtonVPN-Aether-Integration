@@ -72,6 +72,10 @@ jobs:
           RUSTFLAGS: -C target-feature=+crt-static
         run: |
           set -euo pipefail
+          # Prepend MSVC linker to PATH so bash finds it before Git's
+          # coreutils link.exe (C:\Program Files\Git\usr\bin\link.exe)
+          export PATH="${VCToolsInstallDir}/bin/Hostx64/x64:${PATH}"
+          command -v link.exe && link.exe /? | head -1
           command -v ninja && ninja --version
           cargo build --release --locked --target x86_64-pc-windows-msvc \
             --manifest-path aether/aether/Cargo.toml \
