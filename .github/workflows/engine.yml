@@ -53,13 +53,23 @@ jobs:
         working-directory: aether/aether
         run: cargo fmt --all -- --check
 
+      # boring-sys compiles BoringSSL via the `cmake` crate. The default MSBuild
+      # generator fails on CI with MSVC FileTracker FTK1011 (cvtres .tlog path).
+      # Forcing the Ninja generator (read by the cmake crate from CMAKE_GENERATOR)
+      # avoids the MSBuild tracker entirely. Ninja + cl need the MSVC dev env.
+      - name: Set up MSVC (Ninja + cl)
+        uses: ilammy/msvc-dev-cmd@v1
+
       - name: Build engine (aether.exe, static CRT)
         timeout-minutes: 40
         shell: bash
+        env:
+          CMAKE_GENERATOR: Ninja
+          RUSTFLAGS: -C target-feature=+crt-static
         run: |
           set -euo pipefail
-          RUSTFLAGS='-C target-feature=+crt-static' \
-            cargo build --release --locked --target x86_64-pc-windows-msvc \
+          command -v ninja && ninja --version
+          cargo build --release --locked --target x86_64-pc-windows-msvc \
             --manifest-path aether/aether/Cargo.toml \
             || cargo build --release --target x86_64-pc-windows-msvc \
                --manifest-path aether/aether/Cargo.toml
