@@ -42,10 +42,14 @@ jobs:
           targets: x86_64-pc-windows-msvc
           components: clippy, rustfmt
 
+      # Key bump (ninja) forces a fresh configure after switching generators:
+      # the previous failure polluted the cache with a Visual-Studio-generated
+      # CMakeCache.txt that conflicts with the Ninja generator.
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: aether/aether
-          cache-on-failure: true
+          key: ninja
+          cache-on-failure: false
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Format check
