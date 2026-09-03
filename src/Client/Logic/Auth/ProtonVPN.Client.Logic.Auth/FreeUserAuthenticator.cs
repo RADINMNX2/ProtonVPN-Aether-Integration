@@ -18,8 +18,10 @@
  */
 
 using System.Security;
+using ProtonVPN.Client.EventMessaging.Contracts;
 using ProtonVPN.Client.Logic.Auth.Contracts;
 using ProtonVPN.Client.Logic.Auth.Contracts.Enums;
+using ProtonVPN.Client.Logic.Auth.Contracts.Messages;
 using ProtonVPN.Client.Logic.Auth.Contracts.Models;
 
 namespace ProtonVPN.Client.Logic.Auth;
@@ -31,6 +33,13 @@ namespace ProtonVPN.Client.Logic.Auth;
 /// </summary>
 public class FreeUserAuthenticator : IUserAuthenticator
 {
+    private readonly IEventMessageSender _eventMessageSender;
+
+    public FreeUserAuthenticator(IEventMessageSender eventMessageSender)
+    {
+        _eventMessageSender = eventMessageSender;
+    }
+
     public AuthenticationStatus AuthenticationStatus => AuthenticationStatus.LoggedIn;
 
     public bool IsLoggedIn => true;
@@ -59,10 +68,19 @@ public class FreeUserAuthenticator : IUserAuthenticator
         => Task.FromResult(AuthResult.Fail("No-account mode: security keys are not available."));
 
     public Task<AuthResult> AutoLoginUserAsync(bool isAppStartup)
-        => Task.FromResult(AuthResult.Ok());
+    {
+        // Fire the same event the real authenticator fires when it goes to
+        // LoggedIn, so MainWindowViewNavigator.NavigateToDefaultAsync lands on
+        // the main (free) window — not the login page. No backend is contacted.
+        _eventMessageSender.Send(new AuthenticationStatusChanged(AuthenticationStatus.LoggedIn));
+        return Task.FromResult(AuthResult.Ok());
+    }
 
     public Task LogoutAsync(LogoutReason reason)
-        => Task.CompletedTask;
+    {
+        // No-account mode: logging out is a no-op — the user is always free.
+        return Task.CompletedTask;
+    }
 
     public void CancelAuth()
     {

@@ -26,7 +26,10 @@ public class AuthLogicModule : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
-        builder.RegisterType<UserAuthenticator>().AsImplementedInterfaces().SingleInstance();
+        // No-account mode: replace the real Proton backend authenticator with
+        // the always-free stub so the app never requires an account or talks to
+        // the Proton backend. Swap back to UserAuthenticator for the stock build.
+        builder.RegisterType<FreeUserAuthenticator>().AsImplementedInterfaces().SingleInstance();
         builder.RegisterType<UnauthSessionManager>().AsImplementedInterfaces().SingleInstance();
         builder.RegisterType<SrpProofGenerator>().AsImplementedInterfaces().SingleInstance();
         builder.RegisterType<SrpAuthenticator>().AsImplementedInterfaces().SingleInstance();
